@@ -96,21 +96,30 @@ def calculate_z_score(df):
     return df
 
 def forecast_3years(hist_df):
-    """Predict next 3 years using linear trend"""
+    """Predict next 3 years using pandas/numpy linear regression (no sklearn)"""
     hist = hist_df.dropna(subset=['z_score', 'fyear'])
     if len(hist) < 3:
         return pd.DataFrame(), {}
     
-    X = hist['fyear'].values.reshape(-1, 1)
+    # 手动线性回归：y = mx + b
+    x = hist['fyear'].values
     y = hist['z_score'].values
+    n = len(x)
     
-    model = LinearRegression().fit(X, y)
-    slope = model.coef_[0]
-    r2 = model.score(X, y)
+    # 计算斜率和截距
+    m = (n * np.sum(x*y) - np.sum(x)*np.sum(y)) / (n*np.sum(x**2) - np.sum(x)**2)
+    b = (np.sum(y) - m*np.sum(x)) / n
     
-    last_year = hist['fyear'].max()
-    future_years = np.arange(last_year + 1, last_year + 4)
-    predictions = model.predict(future_years.reshape(-1, 1))
+    # 计算 R²
+    y_pred = m*x + b
+    ss_res = np.sum((y - y_pred)**2)
+    ss_tot = np.sum((y - np.mean(y))**2)
+    r2 = 1 - (ss_res/ss_tot) if ss_tot != 0 else 0
+    
+    # 预测未来 3 年
+    last_year = int(x[-1])
+    future_years = np.array([last_year + 1, last_year + 2, last_year + 3])
+    predictions = m * future_years + b
     
     forecast_df = pd.DataFrame({
         'fyear': future_years,
@@ -119,13 +128,13 @@ def forecast_3years(hist_df):
     })
     
     metrics = {
-        'slope': slope,
+        'slope': m,
         'r2': r2,
-        'current_z': hist['z_score'].iloc[-1],
+        'current_z': y[-1],
         'final_z': predictions[-1],
-        'current_zone': 'Safe' if hist['z_score'].iloc[-1] > 2.99 else 'Grey' if hist['z_score'].iloc[-1] > 1.81 else 'Distress',
+        'current_zone': 'Safe' if y[-1] > 2.99 else 'Grey' if y[-1] > 1.81 else 'Distress',
         'future_zone': 'Safe' if predictions[-1] > 2.99 else 'Grey' if predictions[-1] > 1.81 else 'Distress',
-        'worsening': (hist['z_score'].iloc[-1] > 1.81 and predictions[-1] < 1.81)
+        'worsening': (y[-1] > 1.81 and predictions[-1] < 1.81)
     }
     return forecast_df, metrics
 
